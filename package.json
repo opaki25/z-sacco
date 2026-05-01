@@ -1,0 +1,10 @@
+{
+  "name": "z-sacco-management",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Z-SACCO public website and management system prototype with a local backend.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  }
+}
