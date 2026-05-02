@@ -138,6 +138,15 @@ async function supabaseRpc(name, payload) {
   return data;
 }
 
+function cleanAmount(value) {
+  const number = Number(String(value || "0").replace(/[^0-9.]/g, ""));
+  return Number.isFinite(number) ? number : 0;
+}
+
+function authPayload(input) {
+  return { ...input, token: input.token || input.authToken || "" };
+}
+
 function sendJson(res, status, payload) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(payload));
@@ -200,6 +209,29 @@ function queueEmail(db, to, subject, body) {
   };
   db.outbox.push(email);
   return email;
+}
+
+function localAppData(db, session) {
+  const scopedMembers = db.members.filter((member) => member.saccoId === session.saccoId || session.saccoId === "seed");
+  return {
+    sacco: db.saccos.find((item) => item.id === session.saccoId) || { name: "Z-SACCO Demo Cooperative", registrationNumber: "ZS-SACCO-2026-100001" },
+    members: scopedMembers.map((member) => ({
+      id: member.id,
+      memberNumber: member.memberNumber,
+      name: member.name,
+      phone: member.phone,
+      email: member.email,
+      branch: "Main Branch",
+      savingsBalance: 0,
+      loansCount: 0,
+      status: "Active",
+      createdAt: member.createdAt,
+    })),
+    accounts: [],
+    transactions: [],
+    loans: [],
+    staff: db.admins.map((admin) => ({ ...publicUser(admin, "admin"), role: "Admin", branch: "Head Office", access: "Full access", status: "Active" })),
+  };
 }
 
 async function registerSacco(req, res) {
@@ -379,6 +411,82 @@ async function logout(req, res) {
   sendJson(res, 200, { message: "Logged out." });
 }
 
+async function appData(req, res) {
+  const input = await readBody(req);
+  if (hasSupabase()) {
+    const result = await supabaseRpc("api_get_app_data", authPayload(input));
+    return sendJson(res, 200, result);
+  }
+
+  const db = readDb();
+  const session = db.sessions.find((item) => item.token === input.token);
+  if (!session) return sendJson(res, 401, { error: "Invalid or expired session." });
+  return sendJson(res, 200, localAppData(db, session));
+}
+
+async function saveMember(req, res) {
+  const input = await readBody(req);
+  if (!String(input.name || "").trim()) return sendJson(res, 400, { error: "Member name is required." });
+
+  if (hasSupabase()) {
+    const result = await supabaseRpc("api_save_member", authPayload({
+      ...input,
+      passwordHash: hashPassword(input.password || "Member2026!"),
+    }));
+    return sendJson(res, 200, result);
+  }
+
+  const db = readDb();
+  const session = db.sessions.find((item) => item.token === input.token && item.role === "admin");
+  if (!session) return sendJson(res, 401, { error: "Only admins can manage members." });
+  const member = {
+    id: makeId("member"),
+    saccoId: session.saccoId,
+    memberNumber: `ZS-${1000 + db.members.length + 1}`,
+    name: input.name.trim(),
+    phone: input.phone || "",
+    email: input.email || "",
+    passwordHash: hashPassword(input.password || "Member2026!"),
+    createdAt: now(),
+  };
+  db.members.push(member);
+  writeDb(db);
+  return sendJson(res, 200, localAppData(db, session));
+}
+
+async function postTransaction(req, res) {
+  const input = await readBody(req);
+  if (hasSupabase()) {
+    const result = await supabaseRpc("api_post_transaction", authPayload({
+      ...input,
+      amount: cleanAmount(input.amount),
+    }));
+    return sendJson(res, 200, result);
+  }
+  sendJson(res, 501, { error: "Transaction posting requires the Supabase data layer." });
+}
+
+async function submitLoan(req, res) {
+  const input = await readBody(req);
+  if (hasSupabase()) {
+    const result = await supabaseRpc("api_submit_loan", authPayload({
+      ...input,
+      amount: cleanAmount(input.amount),
+    }));
+    return sendJson(res, 200, result);
+  }
+  sendJson(res, 501, { error: "Loan submissions require the Supabase data layer." });
+}
+
+async function decideLoan(req, res) {
+  const input = await readBody(req);
+  if (hasSupabase()) {
+    const result = await supabaseRpc("api_decide_loan", authPayload(input));
+    return sendJson(res, 200, result);
+  }
+  sendJson(res, 501, { error: "Loan decisions require the Supabase data layer." });
+}
+
 function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   let requestPath = decodeURIComponent(url.pathname);
@@ -405,6 +513,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/auth/login") return login(req, res);
     if (req.method === "POST" && url.pathname === "/api/auth/forgot-password") return forgotPassword(req, res);
     if (req.method === "POST" && url.pathname === "/api/auth/logout") return logout(req, res);
+    if (req.method === "POST" && url.pathname === "/api/app-data") return appData(req, res);
+    if (req.method === "POST" && url.pathname === "/api/members") return saveMember(req, res);
+    if (req.method === "POST" && url.pathname === "/api/transactions") return postTransaction(req, res);
+    if (req.method === "POST" && url.pathname === "/api/loans") return submitLoan(req, res);
+    if (req.method === "POST" && url.pathname === "/api/loans/decision") return decideLoan(req, res);
     if (req.method === "GET" && url.pathname === "/api/health") return sendJson(res, 200, { ok: true, time: now() });
     if (req.method === "GET") return serveStatic(req, res);
     sendJson(res, 405, { error: "Method not allowed." });

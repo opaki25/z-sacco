@@ -38,7 +38,7 @@ const memberNavItems = [
   ["memberLogin", "Login", icons.lock],
 ];
 
-const members = [
+let members = [
   ["ZS-1001", "Amina Kato", "Kampala Central", "UGX 18.2M", "2", "Active"],
   ["ZS-1002", "Brian Okello", "Wandegeya", "UGX 7.8M", "1", "Active"],
   ["ZS-1003", "Claire Namuli", "Mukono", "UGX 25.4M", "0", "Active"],
@@ -46,7 +46,7 @@ const members = [
   ["ZS-1005", "Esther Achieng", "Jinja", "UGX 13.9M", "3", "Active"],
 ];
 
-const transactions = [
+let transactions = [
   ["TX-88291", "Amina Kato", "Deposit", "UGX 2,000,000", "Apr 30, 2026", "Completed"],
   ["TX-88288", "Brian Okello", "Loan repayment", "UGX 620,000", "Apr 29, 2026", "Completed"],
   ["TX-88276", "Claire Namuli", "Withdrawal", "UGX 1,150,000", "Apr 28, 2026", "Approved"],
@@ -54,19 +54,31 @@ const transactions = [
   ["TX-88244", "David Ssebugwawo", "Loan disbursement", "UGX 8,000,000", "Apr 26, 2026", "Posted"],
 ];
 
-const loanRows = [
+let loanRows = [
   ["LN-2041", "Amina Kato", "Business Expansion", "UGX 12,000,000", "62%", "Performing"],
   ["LN-2038", "Brian Okello", "School Fees", "UGX 3,500,000", "78%", "Performing"],
   ["LN-2031", "David Ssebugwawo", "Asset Finance", "UGX 8,000,000", "24%", "Watch"],
   ["LN-2026", "Esther Achieng", "Agriculture", "UGX 16,000,000", "41%", "Performing"],
 ];
 
-const staffRows = [
+let staffRows = [
   ["Grace Nambi", "Admin", "Head Office", "Full access", "Active"],
   ["Samuel Kizza", "Manager", "Kampala Central", "Approvals", "Active"],
   ["Ruth Akello", "Teller", "Wandegeya", "Transactions", "Active"],
   ["Peter Mwanga", "Teller", "Mukono", "Transactions", "Suspended"],
 ];
+
+let memberRecords = [];
+let accountRecords = [
+  { id: "demo-account-1", accountNumber: "ZS-SAV-1001", memberName: "Amina Kato", accountType: "Savings", balance: 18240000, lastActivity: "Apr 30, 2026", status: "Active" },
+  { id: "demo-account-2", accountNumber: "ZS-SHR-1001", memberName: "Amina Kato", accountType: "Shares", balance: 3400000, lastActivity: "Apr 18, 2026", status: "Active" },
+  { id: "demo-account-3", accountNumber: "ZS-SAV-1002", memberName: "Brian Okello", accountType: "Savings", balance: 7800000, lastActivity: "Apr 29, 2026", status: "Active" },
+  { id: "demo-account-4", accountNumber: "ZS-SAV-1004", memberName: "David Ssebugwawo", accountType: "Savings", balance: 4600000, lastActivity: "Apr 26, 2026", status: "Review" },
+];
+let transactionRecords = [];
+let loanRecords = [];
+let staffRecords = [];
+let liveSacco = null;
 
 const adminAccounts = [
   { name: "Amina Kato", email: "admin@zsacco.coop", password: "zsacco", memberName: "Amina Kato", memberPassword: "Member2026!" },
@@ -134,27 +146,41 @@ function toolbar(searchPlaceholder, filters = []) {
 }
 
 function dashboard() {
+  const totalSavings = accountRecords.reduce((sum, account) => sum + Number(account.balance || 0), 0);
+  const activeLoans = loanRecords.filter((loan) => String(loan.status || "").toLowerCase() !== "rejected").length || loanRows.length;
+  const approvedLoans = loanRecords.filter((loan) => String(loan.status || "").toLowerCase() === "performing").length;
+  const recentToday = transactionRecords.filter((transaction) => formatDate(transaction.date) === todayLabel()).length;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug"];
+  const maxSavings = Math.max(totalSavings, 1);
+  const savingsBars = months.map((month, index) => {
+    const staged = totalSavings ? totalSavings * (0.45 + (index + 1) * 0.07) : (index + 1) * 1_000_000;
+    return { month, height: Math.min(190, Math.max(72, Math.round((staged / maxSavings) * 140))) };
+  });
+  const productCounts = loanRecords.reduce((map, loan) => {
+    const key = loan.product || "General";
+    map[key] = (map[key] || 0) + 1;
+    return map;
+  }, {});
+  const productTotal = Object.values(productCounts).reduce((sum, count) => sum + count, 0) || 1;
+  const productLegend = Object.entries(productCounts).slice(0, 4);
   return `<div class="screen">
     <section class="grid stats-grid">
-      ${moneyStat("Total Members", "8,426", "+12.4% this quarter", icons.users)}
-      ${moneyStat("Total Savings", "UGX 18.7B", "+8.1% month", icons.wallet)}
-      ${moneyStat("Active Loans", "1,284", "+64 approved", icons.loan)}
-      ${moneyStat("Total Transactions", "42,908", "+2,318 today", icons.receipt)}
+      ${moneyStat("Total Members", members.length.toLocaleString(), "Live member register", icons.users)}
+      ${moneyStat("Total Savings", formatUGX(totalSavings, true), "From savings accounts", icons.wallet)}
+      ${moneyStat("Active Loans", activeLoans.toLocaleString(), `+${approvedLoans} approved`, icons.loan)}
+      ${moneyStat("Total Transactions", transactions.length.toLocaleString(), `+${recentToday} today`, icons.receipt)}
     </section>
     <section class="grid two-col">
       <article class="card">
         <div class="card-title"><h2>Savings Growth</h2><span class="pill">FY 2026</span></div>
-        <div class="chart">${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug"].map((m, i) => `<div class="bar"><span style="height:${82 + i * 14 + (i % 3) * 10}px"></span>${m}</div>`).join("")}</div>
+        <div class="chart">${savingsBars.map((item) => `<div class="bar"><span style="height:${item.height}px"></span>${item.month}</div>`).join("")}</div>
       </article>
       <article class="card">
         <div class="card-title"><h2>Loan Distribution</h2><span class="pill dark">Portfolio</span></div>
         <div class="donut-wrap">
           <div class="donut"></div>
           <div class="legend">
-            <p><span style="background:var(--blue)"></span>Business loans 48%</p>
-            <p><span style="background:var(--gold)"></span>Agriculture 25%</p>
-            <p><span style="background:var(--ink)"></span>Education 18%</p>
-            <p><span style="background:#a9b7c9"></span>Emergency 9%</p>
+            ${(productLegend.length ? productLegend : [["No loans", 0]]).map(([name, count], index) => `<p><span style="background:${["var(--gold)","#ffe88a","#6f5400","#d0d4dc"][index] || "var(--gold)"}"></span>${name} ${Math.round((count / productTotal) * 100)}%</p>`).join("")}
           </div>
         </div>
       </article>
@@ -167,10 +193,8 @@ function dashboard() {
       <article class="card">
         <div class="card-title"><h2>Recent Activity</h2><span class="pill success">Live</span></div>
         <div class="activity">
-          <div class="activity-item"><span class="status-dot"></span><div><strong>Deposit approved</strong><br><small>Amina Kato, UGX 2,000,000</small></div></div>
-          <div class="activity-item"><span class="status-dot blue"></span><div><strong>New loan request</strong><br><small>Esther Achieng, Agriculture</small></div></div>
-          <div class="activity-item"><span class="status-dot warn"></span><div><strong>KYC review flagged</strong><br><small>David Ssebugwawo, ID expiry</small></div></div>
-          <div class="activity-item"><span class="status-dot"></span><div><strong>Statement exported</strong><br><small>Manager, Kampala Central</small></div></div>
+          ${(transactions.length ? transactions.slice(0, 3).map((row) => `<div class="activity-item"><span class="status-dot"></span><div><strong>${row[2]} posted</strong><br><small>${row[1]}, ${row[3]}</small></div></div>`).join("") : '<div class="empty-state">No activity yet.</div>')}
+          ${(loanRows[0] ? `<div class="activity-item"><span class="status-dot warn"></span><div><strong>Latest loan update</strong><br><small>${loanRows[0][1]}, ${loanRows[0][2]}</small></div></div>` : "")}
         </div>
       </article>
     </section>
@@ -260,35 +284,46 @@ function memberForm() {
   return `<div class="screen"><article class="card">
     <div class="card-title"><h2>Add / Edit Member</h2><span class="pill">KYC required</span></div>
     <form class="form-grid">
-      <div class="field"><label>First name</label><input value="Amina" /></div>
-      <div class="field"><label>Last name</label><input value="Kato" /></div>
-      <div class="field"><label>National ID</label><input value="CM94077109" /></div>
-      <div class="field"><label>Phone number</label><input value="+256 772 402 110" /></div>
-      <div class="field"><label>Branch</label><select><option>Kampala Central</option><option>Wandegeya</option><option>Mukono</option></select></div>
-      <div class="field"><label>Membership type</label><select><option>Individual</option><option>Group</option><option>Corporate</option></select></div>
-      <div class="field full"><label>Address</label><textarea>Kira Road, Kampala</textarea></div>
+      <div class="field"><label>First name</label><input name="first_name" value="Amina" /></div>
+      <div class="field"><label>Last name</label><input name="last_name" value="Kato" /></div>
+      <div class="field"><label>National ID</label><input name="national_id" value="CM94077109" /></div>
+      <div class="field"><label>Phone number</label><input name="phone" value="+256 772 402 110" /></div>
+      <div class="field"><label>Email address</label><input name="email" value="member@zsacco.coop" /></div>
+      <div class="field"><label>Branch</label><select name="branch"><option>${liveSacco?.location || "Kampala Central"}</option><option>Wandegeya</option><option>Mukono</option></select></div>
+      <div class="field"><label>Membership type</label><select name="member_type"><option>Individual</option><option>Group</option><option>Corporate</option></select></div>
+      <div class="field"><label>Member portal password</label><input name="password" type="password" value="Member2026!" /></div>
+      <div class="field full"><label>Address</label><textarea name="address">Kira Road, Kampala</textarea></div>
       <div class="form-actions full"><button class="primary-button" type="button" data-save-member>Save member</button><button class="ghost-button" type="button" data-upload-kyc>Upload KYC</button></div>
     </form>
   </article></div>`;
 }
 
 function memberProfileAdmin() {
+  const member = selectedTransaction?.record?.memberId
+    ? memberRecords.find((item) => item.id === selectedTransaction.record.memberId)
+    : memberRecords[0];
+  const name = member?.name || "Amina Kato";
+  const memberNumber = member?.memberNumber || "ZS-1001";
+  const savings = member?.savingsBalance || accountRecords.filter((account) => account.memberName === name).reduce((sum, account) => sum + Number(account.balance || 0), 0) || 18240000;
+  const memberTx = transactions.filter((row) => row[1] === name);
+  const memberLoans = loanRows.filter((row) => row[1] === name);
+  const memberAccountsCount = accountRecords.filter((account) => account.memberName === name).length;
   return `<div class="profile-layout">
     <aside class="card profile-panel">
-      <div class="profile-hero"><span class="avatar">AK</span><div><h2>Amina Kato</h2><p class="muted">ZS-1001 - Kampala Central</p></div></div>
+      <div class="profile-hero"><span class="avatar">${name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span><div><h2>${name}</h2><p class="muted">${memberNumber} - ${liveSacco?.location || "Main Branch"}</p></div></div>
       <div class="grid" style="margin-top:22px">
-        <div><p class="muted">Savings balance</p><h2>UGX 18,240,000</h2></div>
-        <div><p class="muted">Outstanding loans</p><h2>UGX 7,420,000</h2></div>
+        <div><p class="muted">Savings balance</p><h2>${formatUGX(savings)}</h2></div>
+        <div><p class="muted">Outstanding loans</p><h2>${memberLoans.length}</h2></div>
         <div><p class="muted">Risk grade</p><span class="pill success">A Stable</span></div>
       </div>
     </aside>
     <section class="screen">
       <div class="grid three-col">
-        ${moneyStat("Accounts", "3", "Primary active", icons.wallet)}
-        ${moneyStat("Transactions", "186", "Last 12 months", icons.receipt)}
-        ${moneyStat("Loans", "2", "1 cleared", icons.loan)}
+        ${moneyStat("Accounts", String(memberAccountsCount), "Active accounts", icons.wallet)}
+        ${moneyStat("Transactions", String(memberTx.length), "Live history", icons.receipt)}
+        ${moneyStat("Loans", String(memberLoans.length), "Current portfolio", icons.loan)}
       </div>
-      <article class="table-card"><div class="table-head"><h2 class="section-title">Member Transactions</h2></div>${renderTable(["Ref", "Member", "Type", "Amount", "Date", "Status"], transactions.slice(0, 4), "Open")}</article>
+      <article class="table-card"><div class="table-head"><h2 class="section-title">Member Transactions</h2></div>${renderTable(["Ref", "Member", "Type", "Amount", "Date", "Status"], memberTx.slice(0, 4), "Open")}</article>
     </section>
   </div>`;
 }
@@ -296,44 +331,58 @@ function memberProfileAdmin() {
 function accountsScreen(mode) {
   if (mode === "deposit" || mode === "withdrawal") {
     const deposit = mode === "deposit";
+    const selectedAccount = accountRecords[0] || {};
+    const accountOptions = accountRecords.map((account) => `<option value="${account.id}">${account.memberName} - ${account.accountNumber}</option>`).join("");
     return `<div class="grid two-col">
       <article class="card">
         <div class="card-title"><h2>${deposit ? "Deposit Interface" : "Withdrawal Interface"}</h2><span class="pill ${deposit ? "success" : "warn"}">${deposit ? "Cash in" : "Cash out"}</span></div>
         <form class="form-grid">
-          <div class="field full"><label>Member account</label><select><option>Amina Kato - ZS-SAV-1001</option><option>Brian Okello - ZS-SAV-1002</option></select></div>
-          <div class="field"><label>Amount</label><input value="2,000,000" /></div>
-          <div class="field"><label>Payment method</label><select><option>Cash</option><option>Mobile Money</option><option>Bank transfer</option></select></div>
-          <div class="field full"><label>Narration</label><textarea>${deposit ? "Monthly member savings deposit" : "Member withdrawal request approved at teller desk"}</textarea></div>
+          <div class="field full"><label>Member account</label><select name="account_id">${accountOptions || '<option value="">No accounts available</option>'}</select></div>
+          <div class="field"><label>Amount</label><input name="amount" value="2,000,000" /></div>
+          <div class="field"><label>Payment method</label><select name="method"><option>Cash</option><option>Mobile Money</option><option>Bank transfer</option></select></div>
+          <div class="field full"><label>Narration</label><textarea name="narration">${deposit ? "Monthly member savings deposit" : "Member withdrawal request approved at teller desk"}</textarea></div>
           <div class="form-actions full"><button class="primary-button" type="button" data-post-transaction="${deposit ? "Deposit" : "Withdrawal"}">${deposit ? "Post deposit" : "Process withdrawal"}</button><button class="ghost-button" type="button" data-print-receipt>Print receipt</button></div>
         </form>
       </article>
       <article class="card">
         <div class="card-title"><h2>Account Balance</h2><span class="pill success">Verified</span></div>
-        <p class="muted">Available balance</p><p class="amount-xl" style="color:var(--ink)">UGX 18,240,000</p>
-        <div class="summary-band"><div><p class="muted">Shares</p><strong>UGX 3.4M</strong></div><div><p class="muted">Savings</p><strong>UGX 14.8M</strong></div><div><p class="muted">Lien</p><strong>UGX 0</strong></div></div>
+        <p class="muted">Available balance</p><p class="amount-xl" style="color:var(--ink)">${formatUGX(selectedAccount.balance || 0)}</p>
+        <div class="summary-band"><div><p class="muted">Account</p><strong>${selectedAccount.accountNumber || "N/A"}</strong></div><div><p class="muted">Type</p><strong>${selectedAccount.accountType || "Savings"}</strong></div><div><p class="muted">Lien</p><strong>UGX 0</strong></div></div>
       </article>
     </div>`;
   }
-  return `<div class="screen"><article class="table-card"><div class="table-head"><h2 class="section-title">Savings Accounts</h2>${toolbar("Search accounts", ["Account type", "Branch"])}</div>${renderTable(["Account", "Member", "Type", "Balance", "Last Activity", "Status"], [["ZS-SAV-1001","Amina Kato","Savings","UGX 18,240,000","Apr 30, 2026","Active"],["ZS-SHR-1001","Amina Kato","Shares","UGX 3,400,000","Apr 18, 2026","Active"],["ZS-SAV-1002","Brian Okello","Savings","UGX 7,800,000","Apr 29, 2026","Active"],["ZS-SAV-1004","David Ssebugwawo","Savings","UGX 4,600,000","Apr 26, 2026","Review"]])}</article></div>`;
+  const accountRows = accountRecords.map((account) => rowWithRecord([
+    account.accountNumber,
+    account.memberName,
+    account.accountType,
+    formatUGX(account.balance || 0),
+    formatDate(account.lastActivity),
+    account.status || "Active",
+  ], account));
+  return `<div class="screen"><article class="table-card"><div class="table-head"><h2 class="section-title">Savings Accounts</h2>${toolbar("Search accounts", ["Account type", "Branch"])}</div>${renderTable(["Account", "Member", "Type", "Balance", "Last Activity", "Status"], accountRows)}</article></div>`;
 }
 
 function loansScreen(kind) {
   if (kind === "application") {
+    const memberOptions = memberRecords.map((member) => `<option value="${member.id}">${member.name} - ${member.memberNumber}</option>`).join("");
     return `<div class="screen"><article class="card"><div class="card-title"><h2>Loan Application Form</h2><span class="pill">Credit scoring</span></div>
       <form class="form-grid">
-        <div class="field"><label>Member</label><select><option>Amina Kato - ZS-1001</option></select></div>
-        <div class="field"><label>Loan product</label><select><option>Business Expansion</option><option>Agriculture</option><option>Education</option></select></div>
-        <div class="field"><label>Requested amount</label><input value="12,000,000" /></div>
-        <div class="field"><label>Term</label><select><option>18 months</option><option>24 months</option></select></div>
-        <div class="field full"><label>Purpose</label><textarea>Purchase inventory and expand retail outlet.</textarea></div>
+        <div class="field"><label>Member</label><select name="member_id">${memberOptions || '<option value="">No members available</option>'}</select></div>
+        <div class="field"><label>Loan product</label><select name="product"><option>Business Expansion</option><option>Agriculture</option><option>Education</option><option>Emergency</option></select></div>
+        <div class="field"><label>Requested amount</label><input name="amount" value="12,000,000" /></div>
+        <div class="field"><label>Term</label><select name="term"><option>18 months</option><option>24 months</option><option>12 months</option></select></div>
+        <div class="field full"><label>Purpose</label><textarea name="purpose">Purchase inventory and expand retail outlet.</textarea></div>
         <div class="form-actions full"><button class="primary-button" type="button" data-submit-loan>Submit application</button><button class="ghost-button" type="button" data-attach-documents>Attach documents</button></div>
       </form></article></div>`;
   }
   if (kind === "approval") {
-    return `<div class="screen"><div class="grid three-col">${moneyStat("Pending Review", loanRows.filter((loan) => loan[5] === "Watch").length, "Needs decision", icons.file)}${moneyStat("Approved Today", "11", "UGX 91M", icons.shield)}${moneyStat("Rejected", "3", "Policy checks", icons.loan)}</div><article class="table-card"><div class="table-head"><h2 class="section-title">Loan Approval Queue</h2>${toolbar("Search applications", ["Risk grade", "Loan product"])}</div>${renderTable(["Loan ID","Member","Purpose","Amount","Progress","Status"], loanRows, "Decide")}</article></div>`;
+    return `<div class="screen"><div class="grid three-col">${moneyStat("Pending Review", loanRows.filter((loan) => loan[5] === "Watch").length, "Needs decision", icons.file)}${moneyStat("Approved", String(loanRows.filter((loan) => loan[5] === "Performing").length), "Live approvals", icons.shield)}${moneyStat("Rejected", String(loanRows.filter((loan) => loan[5] === "Rejected").length), "Policy checks", icons.loan)}</div><article class="table-card"><div class="table-head"><h2 class="section-title">Loan Approval Queue</h2>${toolbar("Search applications", ["Risk grade", "Loan product"])}</div>${renderTable(["Loan ID","Member","Purpose","Amount","Progress","Status"], loanRows, "Decide")}</article></div>`;
   }
   if (kind === "details") {
-    return `<div class="grid two-col"><article class="card"><div class="card-title"><h2>Loan Details</h2><span class="pill ${selectedLoan[5] === "Rejected" ? "warn" : "success"}">${selectedLoan[5]}</span></div><div class="summary-band"><div><p class="muted">Principal</p><strong>${selectedLoan[3]}</strong></div><div><p class="muted">Outstanding</p><strong>UGX 7.42M</strong></div><div><p class="muted">Rate</p><strong>14%</strong></div></div><h3>Repayment Progress</h3><div class="progress"><span style="width:${selectedLoan[4]}"></span></div><p class="muted">${selectedLoan[4]} repaid - next installment due May 15, 2026</p><div class="form-actions"><button class="primary-button" type="button" data-loan-decision="approve">Approve</button><button class="danger-button" type="button" data-loan-decision="reject">Reject</button></div></article><article class="card"><div class="card-title"><h2>Repayment Schedule</h2></div><div class="loan-schedule">${["May 15, 2026","Jun 15, 2026","Jul 15, 2026","Aug 15, 2026"].map((d, i) => `<div class="schedule-item"><span class="status-dot ${i ? "blue" : "warn"}"></span><div><strong>UGX 685,000</strong><br><small>${d}</small></div><span class="pill ${i ? "dark" : "warn"}">${i ? "Upcoming" : "Due"}</span></div>`).join("")}</div></article></div>`;
+    const record = selectedLoan?.record || loanRecords[0] || {};
+    const nextDue = record.nextDue ? formatDate(record.nextDue) : "Not scheduled";
+    const installment = record.termMonths ? formatUGX((Number(record.requestedAmount || 0) / record.termMonths) || 0) : "UGX 0";
+    return `<div class="grid two-col"><article class="card"><div class="card-title"><h2>Loan Details</h2><span class="pill ${selectedLoan[5] === "Rejected" ? "warn" : "success"}">${selectedLoan[5]}</span></div><div class="summary-band"><div><p class="muted">Principal</p><strong>${selectedLoan[3]}</strong></div><div><p class="muted">Outstanding</p><strong>${formatUGX(Number(record.requestedAmount || 0) * (1 - (Number(record.progressPercent || 0) / 100)))}</strong></div><div><p class="muted">Rate</p><strong>${record.annualRate || 14}%</strong></div></div><h3>Repayment Progress</h3><div class="progress"><span style="width:${selectedLoan[4]}"></span></div><p class="muted">${selectedLoan[4]} repaid - next installment due ${nextDue}</p><div class="form-actions"><button class="primary-button" type="button" data-loan-decision="approve">Approve</button><button class="danger-button" type="button" data-loan-decision="reject">Reject</button></div></article><article class="card"><div class="card-title"><h2>Repayment Schedule</h2></div><div class="loan-schedule">${[0,1,2,3].map((_, i) => `<div class="schedule-item"><span class="status-dot ${i ? "blue" : "warn"}"></span><div><strong>${installment}</strong><br><small>${i ? formatDate(new Date(Date.now() + (i + 1) * 30 * 86400000)) : nextDue}</small></div><span class="pill ${i ? "dark" : "warn"}">${i ? "Upcoming" : "Due"}</span></div>`).join("")}</div></article></div>`;
   }
   return `<div class="screen"><article class="table-card"><div class="table-head"><h2 class="section-title">Loan Management</h2>${toolbar("Search loans", ["Loan status", "Product"])}</div>${renderTable(["Loan ID","Member","Purpose","Amount","Progress","Status"], loanRows, "Open")}</article></div>`;
 }
@@ -343,7 +392,10 @@ function transactionsScreen() {
 }
 
 function reportsScreen() {
-  return `<div class="screen"><section class="grid stats-grid">${moneyStat("Net Savings", "UGX 18.7B", "+8.1%", icons.wallet)}${moneyStat("Loan Portfolio", "UGX 9.4B", "+5.8%", icons.loan)}${moneyStat("Arrears Rate", "2.7%", "Low risk", icons.report)}${moneyStat("Exported Reports", "148", "This month", icons.file)}</section><section class="grid two-col"><article class="card"><div class="card-title"><h2>Financial Summary</h2><button class="primary-button" data-download="financial-summary">${icons.file} Download PDF</button></div><div class="chart">${["Savings","Loans","Fees","Shares","Interest"].map((m, i) => `<div class="bar"><span style="height:${90 + i * 24}px"></span>${m}</div>`).join("")}</div></article><article class="table-card"><div class="table-head"><h2 class="section-title">Member Statements</h2><button class="ghost-button" data-download="statements">${icons.file} Export CSV</button></div>${renderTable(["Statement","Member","Period","Balance","Generated","Status"], [["ST-7091","Amina Kato","Apr 2026","UGX 18.2M","May 1, 2026","Completed"],["ST-7088","Brian Okello","Apr 2026","UGX 7.8M","May 1, 2026","Completed"],["ST-7081","Claire Namuli","Q1 2026","UGX 25.4M","Apr 2, 2026","Completed"]], "Download")}</article></section></div>`;
+  const totalSavings = accountRecords.reduce((sum, account) => sum + Number(account.balance || 0), 0);
+  const loanPortfolio = loanRecords.reduce((sum, loan) => sum + Number(loan.approvedAmount || loan.requestedAmount || 0), 0);
+  const statements = members.slice(0, 5).map((member, index) => [`ST-${7091 - index}`, member[1], "Current month", member[3], todayLabel(), "Completed"]);
+  return `<div class="screen"><section class="grid stats-grid">${moneyStat("Net Savings", formatUGX(totalSavings, true), "Live accounts", icons.wallet)}${moneyStat("Loan Portfolio", formatUGX(loanPortfolio, true), "Approved + pending", icons.loan)}${moneyStat("Arrears Rate", "0.0%", "No arrears recorded", icons.report)}${moneyStat("Exported Reports", String(statements.length), "Ready now", icons.file)}</section><section class="grid two-col"><article class="card"><div class="card-title"><h2>Financial Summary</h2><button class="primary-button" data-download="financial-summary">${icons.file} Download PDF</button></div><div class="chart">${["Savings","Loans","Members","Accounts","Transactions"].map((m, i) => `<div class="bar"><span style="height:${90 + i * 24}px"></span>${m}</div>`).join("")}</div></article><article class="table-card"><div class="table-head"><h2 class="section-title">Member Statements</h2><button class="ghost-button" data-download="statements">${icons.file} Export CSV</button></div>${renderTable(["Statement","Member","Period","Balance","Generated","Status"], statements, "Download")}</article></section></div>`;
 }
 
 function usersScreen() {
@@ -369,28 +421,39 @@ const adminScreens = {
 };
 
 function memberDashboard() {
+  const member = memberRecords[0] || {};
+  const savings = accountRecords.reduce((sum, account) => sum + Number(account.balance || 0), 0);
+  const loan = loanRecords.find((item) => String(item.status || "").toLowerCase() !== "rejected") || {};
+  const outstanding = Number(loan.requestedAmount || 0) * (1 - (Number(loan.progressPercent || 0) / 100));
   return `<div class="screen">
     <section class="portal-hero">
       <article class="portal-card balance-card">
-        <p class="eyebrow">Available savings</p><div class="amount-xl">UGX 18,240,000</div>
-        <div class="quick-grid"><div class="quick-card"><p class="muted">Shares</p><strong>UGX 3.4M</strong></div><div class="quick-card"><p class="muted">Loan balance</p><strong>UGX 7.42M</strong></div><div class="quick-card"><p class="muted">Next payment</p><strong>May 15</strong></div></div>
+        <p class="eyebrow">Available savings</p><div class="amount-xl">${formatUGX(savings)}</div>
+        <div class="quick-grid"><div class="quick-card"><p class="muted">Accounts</p><strong>${accountRecords.length}</strong></div><div class="quick-card"><p class="muted">Loan balance</p><strong>${formatUGX(outstanding)}</strong></div><div class="quick-card"><p class="muted">Next payment</p><strong>${loan.nextDue ? formatDate(loan.nextDue) : "N/A"}</strong></div></div>
       </article>
-      <article class="portal-card"><div class="card-title"><h2>Quick Summary</h2><span class="pill success">Good standing</span></div><div class="activity"><div class="activity-item"><span class="status-dot"></span><div><strong>Deposit received</strong><br><small>UGX 2,000,000 - Apr 30</small></div></div><div class="activity-item"><span class="status-dot blue"></span><div><strong>Loan repayment posted</strong><br><small>UGX 685,000 - Apr 15</small></div></div><div class="activity-item"><span class="status-dot warn"></span><div><strong>Next repayment</strong><br><small>UGX 685,000 - May 15</small></div></div></div></article>
+      <article class="portal-card"><div class="card-title"><h2>Quick Summary</h2><span class="pill success">Good standing</span></div><div class="activity">${transactions.slice(0, 2).map((row) => `<div class="activity-item"><span class="status-dot"></span><div><strong>${row[2]}</strong><br><small>${row[3]} - ${row[4]}</small></div></div>`).join("") || '<div class="empty-state">No member activity yet.</div>'}<div class="activity-item"><span class="status-dot warn"></span><div><strong>Next repayment</strong><br><small>${loan.nextDue ? formatDate(loan.nextDue) : "No repayment scheduled"}</small></div></div></div></article>
     </section>
-    <section class="grid two-col"><article class="table-card"><div class="table-head"><h2 class="section-title">Recent Savings Transactions</h2></div>${renderTable(["Ref", "Member", "Type", "Amount", "Date", "Status"], transactions.slice(0, 3), "View")}</article><article class="portal-card"><div class="card-title"><h2>Loan Balance</h2></div><div class="progress"><span style="width:62%"></span></div><p class="muted">UGX 7,420,000 remaining on Business Expansion loan.</p></article></section>
+    <section class="grid two-col"><article class="table-card"><div class="table-head"><h2 class="section-title">Recent Savings Transactions</h2></div>${renderTable(["Ref", "Member", "Type", "Amount", "Date", "Status"], transactions.slice(0, 3), "View")}</article><article class="portal-card"><div class="card-title"><h2>Loan Balance</h2></div><div class="progress"><span style="width:${loan.progressPercent || 0}%"></span></div><p class="muted">${formatUGX(outstanding)} remaining on ${loan.product || "current"} loan for ${member.name || "member"}.</p></article></section>
   </div>`;
 }
 
 function memberSavings() {
-  return `<div class="screen"><article class="portal-card balance-card"><p class="eyebrow">Savings balance</p><div class="amount-xl">UGX 18,240,000</div><div class="split-actions"><button class="ghost-button" data-download="member-statement">Download statement</button><button class="ghost-button" data-support>Request support</button></div></article><article class="table-card"><div class="table-head"><h2 class="section-title">Transaction History</h2>${toolbar("Search savings history", ["Date", "Type"])}</div>${renderTable(["Ref", "Member", "Type", "Amount", "Date", "Status"], transactions, "Details")}</article></div>`;
+  const savings = accountRecords.reduce((sum, account) => sum + Number(account.balance || 0), 0);
+  return `<div class="screen"><article class="portal-card balance-card"><p class="eyebrow">Savings balance</p><div class="amount-xl">${formatUGX(savings)}</div><div class="split-actions"><button class="ghost-button" data-download="member-statement">Download statement</button><button class="ghost-button" data-support>Request support</button></div></article><article class="table-card"><div class="table-head"><h2 class="section-title">Transaction History</h2>${toolbar("Search savings history", ["Date", "Type"])}</div>${renderTable(["Ref", "Member", "Type", "Amount", "Date", "Status"], transactions, "Details")}</article></div>`;
 }
 
 function memberLoans() {
-  return `<div class="screen"><section class="grid three-col">${moneyStat("Loan Status", "Performing", "No arrears", icons.shield)}${moneyStat("Outstanding", "UGX 7.42M", "62% repaid", icons.loan)}${moneyStat("Next Due", "May 15", "UGX 685,000", icons.receipt)}</section><article class="portal-card"><div class="card-title"><h2>Repayment Progress</h2><span class="pill success">On time</span></div><div class="progress"><span style="width:62%"></span></div><p class="muted">11 of 18 installments completed.</p></article><article class="portal-card"><div class="card-title"><h2>Schedule</h2></div><div class="loan-schedule">${["May 15, 2026","Jun 15, 2026","Jul 15, 2026"].map((d, i) => `<div class="schedule-item"><span class="status-dot ${i ? "blue" : "warn"}"></span><div><strong>UGX 685,000</strong><br><small>${d}</small></div><span class="pill ${i ? "dark" : "warn"}">${i ? "Upcoming" : "Due"}</span></div>`).join("")}</div></article></div>`;
+  const loan = loanRecords[0] || {};
+  const progress = Number(loan.progressPercent || 0);
+  const outstanding = Number(loan.requestedAmount || 0) * (1 - progress / 100);
+  const installment = loan.termMonths ? formatUGX(Number(loan.requestedAmount || 0) / loan.termMonths) : "UGX 0";
+  return `<div class="screen"><section class="grid three-col">${moneyStat("Loan Status", loan.status || "No loan", "Live status", icons.shield)}${moneyStat("Outstanding", formatUGX(outstanding), `${progress}% repaid`, icons.loan)}${moneyStat("Next Due", loan.nextDue ? formatDate(loan.nextDue) : "N/A", installment, icons.receipt)}</section><article class="portal-card"><div class="card-title"><h2>Repayment Progress</h2><span class="pill success">On time</span></div><div class="progress"><span style="width:${progress}%"></span></div><p class="muted">${progress}% completed on ${loan.product || "current"} loan.</p></article><article class="portal-card"><div class="card-title"><h2>Schedule</h2></div><div class="loan-schedule">${[0,1,2].map((_, i) => `<div class="schedule-item"><span class="status-dot ${i ? "blue" : "warn"}"></span><div><strong>${installment}</strong><br><small>${i ? formatDate(new Date(Date.now() + (i + 1) * 30 * 86400000)) : (loan.nextDue ? formatDate(loan.nextDue) : "N/A")}</small></div><span class="pill ${i ? "dark" : "warn"}">${i ? "Upcoming" : "Due"}</span></div>`).join("")}</div></article></div>`;
 }
 
 function memberProfilePortal() {
-  return `<div class="grid two-col"><article class="portal-card"><div class="profile-hero"><span class="avatar">AK</span><div><h2>Amina Kato</h2><p class="muted">Member ZS-1001 - Joined 2018</p></div></div><div class="form-grid" style="margin-top:18px"><div><p class="muted">Phone</p><strong>+256 772 402 110</strong></div><div><p class="muted">Email</p><strong>amina.kato@example.com</strong></div><div><p class="muted">Branch</p><strong>Kampala Central</strong></div><div><p class="muted">Address</p><strong>Kira Road, Kampala</strong></div></div></article><article class="portal-card"><div class="card-title"><h2>Account Security</h2><span class="pill success">Verified</span></div><div class="activity"><div class="activity-item"><span class="status-dot"></span><div><strong>National ID verified</strong><br><small>Updated Apr 20, 2026</small></div></div><div class="activity-item"><span class="status-dot"></span><div><strong>Mobile money linked</strong><br><small>MTN ending 2110</small></div></div></div></article></div>`;
+  const member = memberRecords[0] || currentSessionUser || {};
+  const initials = (member.name || "ZS").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  return `<div class="grid two-col"><article class="portal-card"><div class="profile-hero"><span class="avatar">${initials}</span><div><h2>${member.name || "Member"}</h2><p class="muted">Member ${member.memberNumber || "N/A"} - ${liveSacco?.name || "Z-SACCO"}</p></div></div><div class="form-grid" style="margin-top:18px"><div><p class="muted">Phone</p><strong>${member.phone || "Not provided"}</strong></div><div><p class="muted">Email</p><strong>${member.email || "Not provided"}</strong></div><div><p class="muted">Branch</p><strong>${liveSacco?.location || "Main Branch"}</strong></div><div><p class="muted">Registration</p><strong>${liveSacco?.registrationNumber || lastSaccoRegistration}</strong></div></div></article><article class="portal-card"><div class="card-title"><h2>Account Security</h2><span class="pill success">Verified</span></div><div class="activity"><div class="activity-item"><span class="status-dot"></span><div><strong>Member account active</strong><br><small>Live SACCO record</small></div></div><div class="activity-item"><span class="status-dot"></span><div><strong>Portal access enabled</strong><br><small>Password protected</small></div></div></div></article></div>`;
 }
 
 const memberScreens = {
@@ -439,6 +502,86 @@ function showToast(message) {
 
 function todayLabel() {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date());
+}
+
+function formatDate(value) {
+  if (!value) return todayLabel();
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
+}
+
+function amountValue(value) {
+  return Number(String(value || "0").replace(/[^0-9.-]/g, "")) || 0;
+}
+
+function formatUGX(value, compact = false) {
+  const amount = Number(value) || 0;
+  if (compact && amount >= 1_000_000_000) return `UGX ${(amount / 1_000_000_000).toFixed(1)}B`;
+  if (compact && amount >= 1_000_000) return `UGX ${(amount / 1_000_000).toFixed(1)}M`;
+  return `UGX ${Math.round(amount).toLocaleString()}`;
+}
+
+function parseTermMonths(value) {
+  return Number(String(value || "12").replace(/[^0-9]/g, "")) || 12;
+}
+
+function rowWithRecord(row, record) {
+  row.record = record;
+  return row;
+}
+
+function syncAppData(data) {
+  if (!data) return;
+  liveSacco = data.sacco || liveSacco;
+  memberRecords = data.members || [];
+  accountRecords = data.accounts || accountRecords;
+  transactionRecords = data.transactions || [];
+  loanRecords = data.loans || [];
+  staffRecords = data.staff || [];
+
+  members = memberRecords.map((member) => rowWithRecord([
+    member.memberNumber,
+    member.name,
+    member.branch || liveSacco?.location || "Main Branch",
+    formatUGX(member.savingsBalance || 0),
+    String(member.loansCount || 0),
+    member.status || "Active",
+  ], member));
+
+  transactions = transactionRecords.map((transaction) => rowWithRecord([
+    transaction.reference,
+    transaction.memberName,
+    transaction.transactionType,
+    formatUGX(transaction.amount || 0),
+    formatDate(transaction.date),
+    transaction.status || "Completed",
+  ], transaction));
+
+  loanRows = loanRecords.map((loan) => rowWithRecord([
+    loan.loanNumber,
+    loan.memberName,
+    loan.product,
+    formatUGX(loan.requestedAmount || loan.approvedAmount || 0),
+    `${loan.progressPercent || 0}%`,
+    loan.status || "Watch",
+  ], loan));
+
+  staffRows = staffRecords.map((staff) => rowWithRecord([
+    staff.name,
+    staff.role || "Admin",
+    staff.branch || liveSacco?.location || "Head Office",
+    staff.access || "Full access",
+    staff.status || "Active",
+  ], staff));
+
+  selectedTransaction = transactions[0] || selectedTransaction;
+  selectedLoan = loanRows[0] || selectedLoan;
+}
+
+async function refreshAppData() {
+  if (!authToken) return null;
+  const data = await apiRequest("/api/app-data", { token: authToken });
+  syncAppData(data);
+  return data;
 }
 
 function nextRef(prefix) {
@@ -490,11 +633,31 @@ function filterTable(input) {
   if (!visible) table.insertAdjacentHTML("afterend", '<div class="empty-state">No matching records found.</div>');
 }
 
-function postTransaction(type, button) {
+async function postTransaction(type, button) {
   const form = button.closest("form");
-  const account = form.querySelector("select").value;
-  const amount = form.querySelector("input").value.trim() || "0";
-  const member = account.split(" - ")[0];
+  const accountSelect = form.querySelector('[name="account_id"]');
+  const account = accountRecords.find((item) => String(item.id) === String(accountSelect.value));
+  const amount = form.querySelector('[name="amount"]').value.trim() || "0";
+  const member = account?.memberName || accountSelect.selectedOptions[0]?.textContent.split(" - ")[0] || "Member";
+  if (authToken && account?.id && !String(account.id).startsWith("demo-")) {
+    try {
+      const data = await apiRequest("/api/transactions", {
+        token: authToken,
+        accountId: account.id,
+        transactionType: type,
+        amount,
+        method: form.querySelector('[name="method"]').value,
+        narration: form.querySelector('[name="narration"]').value,
+      });
+      syncAppData(data);
+      showToast(`${type} posted for ${member}. Dashboard data is updated.`);
+      setAdminScreen("transactions");
+      return;
+    } catch (error) {
+      showToast(error.message || `${type} could not be posted.`);
+      return;
+    }
+  }
   const row = [nextRef("TX"), member, type, `UGX ${amount}`, todayLabel(), type === "Deposit" ? "Completed" : "Approved"];
   transactions.unshift(row);
   selectedTransaction = row;
@@ -502,12 +665,34 @@ function postTransaction(type, button) {
   setAdminScreen("transactions");
 }
 
-function saveMember(button) {
+async function saveMember(button) {
   const form = button.closest("form");
-  const fields = form.querySelectorAll("input, select, textarea");
-  const first = fields[0].value.trim() || "New";
-  const last = fields[1].value.trim() || "Member";
-  const branch = fields[4].value;
+  const data = new FormData(form);
+  const first = String(data.get("first_name") || "New").trim();
+  const last = String(data.get("last_name") || "Member").trim();
+  const branch = String(data.get("branch") || liveSacco?.location || "Main Branch");
+  if (authToken) {
+    try {
+      const result = await apiRequest("/api/members", {
+        token: authToken,
+        name: `${first} ${last}`,
+        phone: data.get("phone"),
+        email: data.get("email"),
+        branch,
+        nationalId: data.get("national_id"),
+        memberType: data.get("member_type"),
+        address: data.get("address"),
+        password: data.get("password"),
+      });
+      syncAppData(result);
+      showToast(`${first} ${last} saved and linked to a savings account.`);
+      setAdminScreen("members");
+      return;
+    } catch (error) {
+      showToast(error.message || "Member could not be saved.");
+      return;
+    }
+  }
   const existing = members.find((member) => member[1] === `${first} ${last}`);
   if (existing) {
     existing[2] = branch;
@@ -520,12 +705,32 @@ function saveMember(button) {
   setAdminScreen("members");
 }
 
-function submitLoan(button) {
+async function submitLoan(button) {
   const form = button.closest("form");
-  const values = form.querySelectorAll("select, input, textarea");
-  const member = values[0].value.split(" - ")[0];
-  const product = values[1].value;
-  const amount = `UGX ${values[2].value.trim() || "0"}`;
+  const data = new FormData(form);
+  const memberRecord = memberRecords.find((member) => String(member.id) === String(data.get("member_id")));
+  const member = memberRecord?.name || form.querySelector('[name="member_id"]').selectedOptions[0]?.textContent.split(" - ")[0] || "Member";
+  const product = data.get("product");
+  const amount = `UGX ${data.get("amount") || "0"}`;
+  if (authToken && memberRecord?.id) {
+    try {
+      const result = await apiRequest("/api/loans", {
+        token: authToken,
+        memberId: memberRecord.id,
+        product,
+        amount: data.get("amount"),
+        term: data.get("term"),
+        purpose: data.get("purpose"),
+      });
+      syncAppData(result);
+      showToast(`Loan application submitted for ${member}.`);
+      setAdminScreen("loanApproval");
+      return;
+    } catch (error) {
+      showToast(error.message || "Loan application could not be submitted.");
+      return;
+    }
+  }
   const loan = [nextRef("LN"), member, product, amount, "0%", "Watch"];
   loanRows.unshift(loan);
   selectedLoan = loan;
@@ -533,7 +738,20 @@ function submitLoan(button) {
   setAdminScreen("loanApproval");
 }
 
-function decideLoan(decision) {
+async function decideLoan(decision) {
+  const loanId = selectedLoan?.record?.id;
+  if (authToken && loanId) {
+    try {
+      const result = await apiRequest("/api/loans/decision", { token: authToken, loanId, decision });
+      syncAppData(result);
+      showToast(`Loan ${selectedLoan[0]} ${decision === "approve" ? "approved" : "rejected"}.`);
+      setAdminScreen("loanApproval");
+      return;
+    } catch (error) {
+      showToast(error.message || "Loan decision could not be saved.");
+      return;
+    }
+  }
   selectedLoan[5] = decision === "approve" ? "Performing" : "Rejected";
   selectedLoan[4] = decision === "approve" ? "5%" : selectedLoan[4];
   showToast(`Loan ${selectedLoan[0]} ${decision === "approve" ? "approved" : "rejected"}.`);
@@ -597,20 +815,28 @@ async function loginAsRole(role, button) {
   if (role === "admin") {
     const email = form.querySelector('[name="admin_email"]')?.value.trim().toLowerCase();
     const password = form.querySelector('[name="admin_password"]')?.value;
-    let account = adminAccounts.find((admin) => admin.email.toLowerCase() === email && admin.password === password);
+    let account = null;
+    try {
+      const result = await apiRequest("/api/auth/login", { role: "admin", email, password, rememberDevice: remember });
+      account = result.user;
+      authToken = result.token;
+    } catch {
+      account = adminAccounts.find((admin) => admin.email.toLowerCase() === email && admin.password === password);
+    }
     if (!account) {
-      try {
-        const result = await apiRequest("/api/auth/login", { role: "admin", email, password, rememberDevice: remember });
-        account = result.user;
-        authToken = result.token;
-      } catch (error) {
-        showToast(error.message || "Invalid admin login details.");
-        return;
-      }
+      showToast("Invalid admin login details.");
+      return;
     }
     currentSessionRole = "admin";
     currentSessionUser = account;
     if (remember) localStorage.setItem("zsacco_remembered_admin", account.email);
+    if (authToken) {
+      try {
+        await refreshAppData();
+      } catch (error) {
+        showToast(error.message || "Dashboard data could not be loaded.");
+      }
+    }
     setAdminScreen("dashboard");
     appFrame.classList.remove("hidden");
     portalFrame.classList.add("hidden");
@@ -619,24 +845,32 @@ async function loginAsRole(role, button) {
   }
   const identity = form.querySelector('[name="member_identity"]')?.value.trim().toLowerCase();
   const password = form.querySelector('[name="member_password"]')?.value;
-  let member = memberAccounts.find((item) => {
+  let member = null;
+  try {
+    const result = await apiRequest("/api/auth/login", { role: "member", identity, password, rememberDevice: remember });
+    member = result.user;
+    authToken = result.token;
+  } catch {
+    member = memberAccounts.find((item) => {
     const matchesIdentity = [item.saccoRegistration, item.name, item.memberId].some((value) => value.toLowerCase() === identity);
     const adminLinked = adminAccounts.some((admin) => admin.memberName.toLowerCase() === item.name.toLowerCase() && admin.password === password);
     return matchesIdentity && (item.password === password || adminLinked);
   });
+  }
   if (!member) {
-    try {
-      const result = await apiRequest("/api/auth/login", { role: "member", identity, password, rememberDevice: remember });
-      member = result.user;
-      authToken = result.token;
-    } catch (error) {
-      showToast(error.message || "Invalid member login details.");
-      return;
-    }
+    showToast("Invalid member login details.");
+    return;
   }
   currentSessionRole = "member";
   currentSessionUser = member;
   if (remember) localStorage.setItem("zsacco_remembered_member", member.memberId);
+  if (authToken) {
+    try {
+      await refreshAppData();
+    } catch (error) {
+      showToast(error.message || "Member data could not be loaded.");
+    }
+  }
   setMemberScreen("memberDashboard");
   portalFrame.classList.remove("hidden");
   appFrame.classList.add("hidden");
@@ -887,7 +1121,9 @@ document.addEventListener("click", (event) => {
   }
   if (downloadButton) {
     const csv = ["Reference,Member,Type,Amount,Date,Status", ...transactions.map((row) => row.join(","))].join("\n");
-    const report = `Z-SACCO Financial Summary\nGenerated: ${todayLabel()}\nNet Savings: UGX 18.7B\nLoan Portfolio: UGX 9.4B\nArrears Rate: 2.7%`;
+    const totalSavings = accountRecords.reduce((sum, account) => sum + Number(account.balance || 0), 0);
+    const loanPortfolio = loanRecords.reduce((sum, loan) => sum + Number(loan.approvedAmount || loan.requestedAmount || 0), 0);
+    const report = `Z-SACCO Financial Summary\nGenerated: ${todayLabel()}\nSACCO: ${liveSacco?.name || "Z-SACCO"}\nTotal Members: ${members.length}\nNet Savings: ${formatUGX(totalSavings)}\nLoan Portfolio: ${formatUGX(loanPortfolio)}\nTransactions: ${transactions.length}`;
     if (downloadButton.dataset.download === "financial-summary") downloadFile("z-sacco-financial-summary.txt", report);
     else downloadFile("z-sacco-transactions.csv", csv, "text/csv");
   }
