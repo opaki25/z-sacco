@@ -158,7 +158,7 @@ function readBody(req) {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 1_000_000) {
+      if (body.length > 8_000_000) {
         req.destroy();
         reject(new Error("Request body is too large."));
       }
@@ -230,6 +230,8 @@ function localAppData(db, session) {
       phone: member.phone,
       email: member.email,
       branch: "Main Branch",
+      profilePhoto: member.profilePhoto || "",
+      documents: member.documents || [],
       savingsBalance: 0,
       loansCount: 0,
       status: "Active",
@@ -240,6 +242,42 @@ function localAppData(db, session) {
     loans: [],
     staff: db.admins.map((admin) => ({ ...publicUser(admin, "admin"), role: "Admin", branch: "Head Office", access: "Full access", status: "Active" })),
   };
+}
+
+function mergeLocalMemberDocuments(data) {
+  const db = readDb();
+  const documents = db.memberDocuments || [];
+  const membersToMerge = data.members || [];
+  membersToMerge.forEach((member) => {
+    const memberDocs = documents.filter((doc) => doc.memberId === member.id || doc.memberNumber === member.memberNumber);
+    if (!memberDocs.length) return;
+    member.documents = memberDocs;
+    member.profilePhoto = memberDocs.find((doc) => doc.isProfilePhoto)?.dataUrl || member.profilePhoto || "";
+  });
+  return data;
+}
+
+function storeMemberDocuments(member, docs = []) {
+  if (!member || !Array.isArray(docs) || !docs.length) return;
+  const db = readDb();
+  db.memberDocuments ||= [];
+  const normalizedDocs = docs.map((doc) => ({
+    id: makeId("doc"),
+    memberId: member.id,
+    memberNumber: member.memberNumber,
+    documentType: doc.documentType || "KYC Document",
+    fileName: doc.fileName || "document",
+    mimeType: doc.mimeType || "application/octet-stream",
+    dataUrl: doc.dataUrl,
+    isProfilePhoto: Boolean(doc.isProfilePhoto),
+    uploadedAt: now(),
+  })).filter((doc) => doc.dataUrl);
+  if (!normalizedDocs.length) return;
+  if (normalizedDocs.some((doc) => doc.isProfilePhoto)) {
+    db.memberDocuments = db.memberDocuments.filter((doc) => doc.memberId !== member.id || !doc.isProfilePhoto);
+  }
+  db.memberDocuments.push(...normalizedDocs);
+  writeDb(db);
 }
 
 async function registerSacco(req, res) {
@@ -423,7 +461,7 @@ async function appData(req, res) {
   const input = await readBody(req);
   if (hasSupabase()) {
     const result = await supabaseRpc("api_get_app_data", authPayload(input));
-    return sendJson(res, 200, result);
+    return sendJson(res, 200, mergeLocalMemberDocuments(result));
   }
 
   const db = readDb();
@@ -445,7 +483,10 @@ async function saveMember(req, res) {
       passwordHash: hashPassword(input.password || "Member2026!"),
       temporaryPassword: input.temporaryPassword || input.password,
     }));
-    return sendJson(res, 200, result);
+    const savedMember = (result.members || []).find((member) => String(member.email || "").toLowerCase() === String(input.email || "").toLowerCase())
+      || (result.members || [])[0];
+    storeMemberDocuments(savedMember, input.kycDocuments);
+    return sendJson(res, 200, mergeLocalMemberDocuments(result));
   }
 
   const db = readDb();
@@ -458,6 +499,8 @@ async function saveMember(req, res) {
     name: input.name.trim(),
     phone: input.phone || "",
     email: input.email || "",
+    profilePhoto: (input.kycDocuments || []).find((doc) => doc.isProfilePhoto)?.dataUrl || "",
+    documents: input.kycDocuments || [],
     passwordHash: hashPassword(input.password || "Member2026!"),
     createdAt: now(),
   };

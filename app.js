@@ -110,11 +110,13 @@ let currentAdminScreen = "adminLogin";
 let currentMemberScreen = "memberDashboard";
 let selectedTransaction = transactions[0];
 let selectedLoan = loanRows[0];
+let selectedMember = null;
 let toastTimer;
 let lastSaccoRegistration = "ZS-SACCO-2026-100001";
 let currentSessionRole = null;
 let currentSessionUser = null;
 let authToken = null;
+let uploadedKycDocuments = [];
 
 const appFrame = document.querySelector("#appFrame");
 const portalFrame = document.querySelector("#portalFrame");
@@ -142,6 +144,11 @@ function renderTable(headers, rows, action = "View") {
       return `<td>${cell}</td>`;
     }).join("")}<td><button class="ghost-button table-action">${action}</button></td></tr>`).join("")}</tbody>
   </table></div>`;
+}
+
+function avatarMarkup(name, photo, className = "avatar") {
+  if (photo) return `<span class="${className} photo-avatar"><img src="${photo}" alt="${name || "Member"} photo" /></span>`;
+  return `<span class="${className}">${String(name || "ZS").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>`;
 }
 
 function toolbar(searchPlaceholder, filters = []) {
@@ -288,6 +295,7 @@ function membersScreen() {
 }
 
 function memberForm() {
+  uploadedKycDocuments = [];
   return `<div class="screen"><article class="card">
     <div class="card-title"><h2>Add / Edit Member</h2><span class="pill">KYC required</span></div>
     <form class="form-grid">
@@ -301,28 +309,52 @@ function memberForm() {
       <div class="field"><label>Member portal password</label><div class="password-input-group"><input name="password" type="password" placeholder="Create secure password" required /><button class="ghost-button" type="button" data-generate-member-password>Generate</button></div></div>
       <div class="field full"><label>Address</label><textarea name="address" placeholder="Enter member address" required></textarea></div>
       <div class="security-note full"><strong>Password rules</strong><span>Use at least 12 characters with uppercase, lowercase, number, symbol, and no spaces.</span></div>
-      <div class="form-actions full"><button class="primary-button" type="button" data-save-member>Save member</button><button class="ghost-button" type="button" data-upload-kyc>Upload KYC</button></div>
+      <div class="kyc-upload-panel full">
+        <div>
+          <strong>KYC documents</strong>
+          <p class="muted">Upload a profile photo, national ID, application form, or proof of residence for this member.</p>
+        </div>
+        <div class="kyc-upload-controls">
+          <select name="kyc_document_type" data-kyc-type>
+            <option>Profile photo</option>
+            <option>National ID</option>
+            <option>Proof of residence</option>
+            <option>Application form</option>
+            <option>Signature card</option>
+            <option>Other KYC document</option>
+          </select>
+          <button class="ghost-button" type="button" data-upload-kyc>Upload KYC</button>
+          <input class="hidden-file" type="file" accept="image/*,.pdf" multiple data-kyc-file-input />
+        </div>
+        <div class="kyc-preview-list" data-kyc-preview><span class="muted">No KYC files uploaded yet.</span></div>
+      </div>
+      <div class="form-actions full"><button class="primary-button" type="button" data-save-member>Save member</button></div>
     </form>
   </article></div>`;
 }
 
 function memberProfileAdmin() {
-  const member = selectedTransaction?.record?.memberId
+  const member = selectedMember || (selectedTransaction?.record?.memberId
     ? memberRecords.find((item) => item.id === selectedTransaction.record.memberId)
-    : memberRecords[0];
+    : memberRecords[0]);
   const name = member?.name || "Amina Kato";
   const memberNumber = member?.memberNumber || "ZS-1001";
   const savings = member?.savingsBalance || accountRecords.filter((account) => account.memberName === name).reduce((sum, account) => sum + Number(account.balance || 0), 0) || 18240000;
   const memberTx = transactions.filter((row) => row[1] === name);
   const memberLoans = loanRows.filter((row) => row[1] === name);
   const memberAccountsCount = accountRecords.filter((account) => account.memberName === name).length;
+  const documents = member?.documents || [];
   return `<div class="profile-layout">
     <aside class="card profile-panel">
-      <div class="profile-hero"><span class="avatar">${name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span><div><h2>${name}</h2><p class="muted">${memberNumber} - ${liveSacco?.location || "Main Branch"}</p></div></div>
+      <div class="profile-hero">${avatarMarkup(name, member?.profilePhoto)}<div><h2>${name}</h2><p class="muted">${memberNumber} - ${liveSacco?.location || "Main Branch"}</p></div></div>
       <div class="grid" style="margin-top:22px">
         <div><p class="muted">Savings balance</p><h2>${formatUGX(savings)}</h2></div>
         <div><p class="muted">Outstanding loans</p><h2>${memberLoans.length}</h2></div>
         <div><p class="muted">Risk grade</p><span class="pill success">A Stable</span></div>
+      </div>
+      <div class="kyc-profile-list">
+        <h3>KYC Files</h3>
+        ${documents.length ? documents.map((doc) => `<div class="kyc-profile-item"><span>${icons.file}</span><div><strong>${doc.documentType}</strong><small>${doc.fileName}</small></div></div>`).join("") : '<p class="muted">No KYC documents uploaded yet.</p>'}
       </div>
     </aside>
     <section class="screen">
@@ -466,8 +498,8 @@ function memberLoans() {
 
 function memberProfilePortal() {
   const member = memberRecords[0] || currentSessionUser || {};
-  const initials = (member.name || "ZS").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
-  return `<div class="grid two-col"><article class="portal-card"><div class="profile-hero"><span class="avatar">${initials}</span><div><h2>${member.name || "Member"}</h2><p class="muted">Member ${member.memberNumber || "N/A"} - ${liveSacco?.name || "Z-SACCO"}</p></div></div><div class="form-grid" style="margin-top:18px"><div><p class="muted">Phone</p><strong>${member.phone || "Not provided"}</strong></div><div><p class="muted">Email</p><strong>${member.email || "Not provided"}</strong></div><div><p class="muted">Branch</p><strong>${liveSacco?.location || "Main Branch"}</strong></div><div><p class="muted">Registration</p><strong>${liveSacco?.registrationNumber || lastSaccoRegistration}</strong></div></div></article><article class="portal-card"><div class="card-title"><h2>Account Security</h2><span class="pill success">Verified</span></div><div class="activity"><div class="activity-item"><span class="status-dot"></span><div><strong>Member account active</strong><br><small>Live SACCO record</small></div></div><div class="activity-item"><span class="status-dot"></span><div><strong>Portal access enabled</strong><br><small>Password protected</small></div></div></div></article></div>`;
+  const documents = member.documents || [];
+  return `<div class="grid two-col"><article class="portal-card"><div class="profile-hero">${avatarMarkup(member.name, member.profilePhoto)}<div><h2>${member.name || "Member"}</h2><p class="muted">Member ${member.memberNumber || "N/A"} - ${liveSacco?.name || "Z-SACCO"}</p></div></div><div class="form-grid" style="margin-top:18px"><div><p class="muted">Phone</p><strong>${member.phone || "Not provided"}</strong></div><div><p class="muted">Email</p><strong>${member.email || "Not provided"}</strong></div><div><p class="muted">Branch</p><strong>${liveSacco?.location || "Main Branch"}</strong></div><div><p class="muted">Registration</p><strong>${liveSacco?.registrationNumber || lastSaccoRegistration}</strong></div></div></article><article class="portal-card"><div class="card-title"><h2>KYC & Security</h2><span class="pill success">Verified</span></div><div class="activity"><div class="activity-item"><span class="status-dot"></span><div><strong>Member account active</strong><br><small>Live SACCO record</small></div></div><div class="activity-item"><span class="status-dot"></span><div><strong>KYC files</strong><br><small>${documents.length} document${documents.length === 1 ? "" : "s"} on file</small></div></div></div></article></div>`;
 }
 
 const memberScreens = {
@@ -616,6 +648,56 @@ function generateSecurePassword(length = 16) {
   return chars.sort(() => Math.random() - 0.5).join("");
 }
 
+function renderKycPreview(form) {
+  const preview = form.querySelector("[data-kyc-preview]");
+  if (!preview) return;
+  if (!uploadedKycDocuments.length) {
+    preview.innerHTML = '<span class="muted">No KYC files uploaded yet.</span>';
+    return;
+  }
+  preview.innerHTML = uploadedKycDocuments.map((doc, index) => `<div class="kyc-preview-item">
+    ${doc.mimeType.startsWith("image/") ? `<img src="${doc.dataUrl}" alt="${doc.documentType}" />` : `<span class="kyc-file-icon">${icons.file}</span>`}
+    <div><strong>${doc.documentType}</strong><small>${doc.fileName}</small></div>
+    <button class="ghost-button" type="button" data-remove-kyc="${index}">Remove</button>
+  </div>`).join("");
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addKycFiles(input) {
+  const form = input.closest("form");
+  const documentType = form.querySelector("[data-kyc-type]")?.value || "KYC Document";
+  const files = [...input.files];
+  if (!files.length) return;
+  for (const file of files) {
+    if (file.size > 2_000_000) {
+      showToast(`${file.name} is too large. Use files below 2MB for now.`);
+      continue;
+    }
+    const dataUrl = await readFileAsDataUrl(file);
+    if (documentType === "Profile photo") {
+      uploadedKycDocuments = uploadedKycDocuments.filter((doc) => !doc.isProfilePhoto);
+    }
+    uploadedKycDocuments.push({
+      documentType,
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+      dataUrl,
+      isProfilePhoto: documentType === "Profile photo",
+    });
+  }
+  input.value = "";
+  renderKycPreview(form);
+  showToast(`${files.length} KYC file${files.length === 1 ? "" : "s"} added.`);
+}
+
 function downloadFile(filename, content, type = "text/plain") {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -723,6 +805,7 @@ async function saveMember(button) {
         address: data.get("address"),
         password,
         temporaryPassword: password,
+        kycDocuments: uploadedKycDocuments,
       });
       syncAppData(result);
       showToast(`${first} ${last} saved. Login details were queued for email and phone.`);
@@ -739,7 +822,21 @@ async function saveMember(button) {
     existing[5] = "Active";
     showToast(`${first} ${last} updated successfully.`);
   } else {
-    members.unshift([`ZS-${1000 + members.length + 1}`, `${first} ${last}`, branch, "UGX 0", "0", "Active"]);
+    const memberNumber = `ZS-${1000 + members.length + 1}`;
+    const profilePhoto = uploadedKycDocuments.find((doc) => doc.isProfilePhoto)?.dataUrl || "";
+    memberRecords.unshift({
+      memberNumber,
+      name: `${first} ${last}`,
+      phone,
+      email: data.get("email"),
+      branch,
+      profilePhoto,
+      documents: uploadedKycDocuments,
+      savingsBalance: 0,
+      loansCount: 0,
+      status: "Active",
+    });
+    members.unshift([memberNumber, `${first} ${last}`, branch, "UGX 0", "0", "Active"]);
     showToast(`${first} ${last} added as a Z-SACCO member.`);
   }
   setAdminScreen("members");
@@ -1141,6 +1238,8 @@ document.addEventListener("click", (event) => {
   const forgotPasswordButton = event.target.closest("[data-forgot-password]");
   const logoutButton = event.target.closest("[data-logout]");
   const generateMemberPasswordButton = event.target.closest("[data-generate-member-password]");
+  const uploadKycButton = event.target.closest("[data-upload-kyc]");
+  const removeKycButton = event.target.closest("[data-remove-kyc]");
   if (openAppButton) openSystemAuth(openAppButton.dataset.openApp);
   if (scrollButton) scrollToSection(scrollButton.dataset.scrollTarget);
   if (featureCard) setFeatureDetail(featureCard);
@@ -1156,6 +1255,14 @@ document.addEventListener("click", (event) => {
       showToast("Secure member password generated.");
     }
   }
+  if (uploadKycButton) {
+    uploadKycButton.closest("form")?.querySelector("[data-kyc-file-input]")?.click();
+  }
+  if (removeKycButton) {
+    const form = removeKycButton.closest("form");
+    uploadedKycDocuments.splice(Number(removeKycButton.dataset.removeKyc), 1);
+    renderKycPreview(form);
+  }
   if (screenButton) setAdminScreen(screenButton.dataset.screen);
   if (memberScreenButton) setMemberScreen(memberScreenButton.dataset.memberScreen);
   if (authTabButton) setAuthMode(authTabButton.dataset.authTab, authTabButton);
@@ -1164,7 +1271,6 @@ document.addEventListener("click", (event) => {
   if (submitLoanButton) submitLoan(submitLoanButton);
   if (loanDecisionButton) decideLoan(loanDecisionButton.dataset.loanDecision);
   if (event.target.closest("[data-print-receipt]")) downloadFile("z-sacco-receipt.txt", `Z-SACCO Receipt\nGenerated: ${todayLabel()}\nReference: ${selectedTransaction[0]}\nMember: ${selectedTransaction[1]}\nAmount: ${selectedTransaction[3]}`);
-  if (event.target.closest("[data-upload-kyc]")) showToast("KYC document upload simulated. Member file marked ready for review.");
   if (event.target.closest("[data-attach-documents]")) showToast("Loan documents attached to the application package.");
   if (event.target.closest("[data-support]")) showToast("Support request submitted. A Z-SACCO officer will follow up.");
   if (event.target.closest("[data-create-access]")) createSaccoAccount(event.target.closest("[data-create-access]"));
@@ -1193,6 +1299,7 @@ document.addEventListener("click", (event) => {
         selectedLoan = loanRows.find((row) => row[0] === values[0]) || values;
         setAdminScreen("loanDetails");
       } else if (values[0]?.startsWith("ZS-")) {
+        selectedMember = memberRecords.find((member) => member.memberNumber === values[0]) || values.record || null;
         showToast(`Opened ${values[1]}'s member profile.`);
         setAdminScreen("memberProfile");
       } else {
@@ -1213,6 +1320,10 @@ document.addEventListener("click", (event) => {
 
 document.addEventListener("input", (event) => {
   if (event.target.matches("#tableSearch")) filterTable(event.target);
+});
+
+document.addEventListener("change", (event) => {
+  if (event.target.matches("[data-kyc-file-input]")) addKycFiles(event.target);
 });
 
 document.addEventListener("mouseover", (event) => {
