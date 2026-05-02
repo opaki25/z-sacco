@@ -694,6 +694,22 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(215, 163, 28, 0.16);
 }
 
+.phone-input-group,
+.password-input-group {
+  display: grid;
+  grid-template-columns: minmax(116px, 0.34fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.password-input-group {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.password-input-group .ghost-button {
+  min-height: 42px;
+  padding-inline: 16px;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2018,6 +2034,11 @@ textarea:focus {
   .summary-band,
   .form-grid,
   .quick-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .phone-input-group,
+  .password-input-group {
     grid-template-columns: 1fr;
   }
 

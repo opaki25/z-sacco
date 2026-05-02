@@ -110,7 +110,8 @@ function makeSaccoRegistration() {
 }
 
 function isStrongPassword(password) {
-  return String(password).length >= 8
+  return String(password).length >= 12
+    && !/\s/.test(password)
     && /[A-Z]/.test(password)
     && /[a-z]/.test(password)
     && /\d/.test(password)
@@ -215,6 +216,13 @@ function localAppData(db, session) {
   const scopedMembers = db.members.filter((member) => member.saccoId === session.saccoId || session.saccoId === "seed");
   return {
     sacco: db.saccos.find((item) => item.id === session.saccoId) || { name: "Z-SACCO Demo Cooperative", registrationNumber: "ZS-SACCO-2026-100001" },
+    summary: {
+      totalMembers: scopedMembers.length,
+      totalAccounts: 0,
+      totalSavings: 0,
+      activeLoans: 0,
+      totalTransactions: 0,
+    },
     members: scopedMembers.map((member) => ({
       id: member.id,
       memberNumber: member.memberNumber,
@@ -427,11 +435,15 @@ async function appData(req, res) {
 async function saveMember(req, res) {
   const input = await readBody(req);
   if (!String(input.name || "").trim()) return sendJson(res, 400, { error: "Member name is required." });
+  if (!String(input.email || "").trim()) return sendJson(res, 400, { error: "Member email is required." });
+  if (!String(input.phone || "").trim()) return sendJson(res, 400, { error: "Member phone is required." });
+  if (!isStrongPassword(input.password || "")) return sendJson(res, 400, { error: "Member password must be at least 12 characters with uppercase, lowercase, number, symbol, and no spaces." });
 
   if (hasSupabase()) {
     const result = await supabaseRpc("api_save_member", authPayload({
       ...input,
       passwordHash: hashPassword(input.password || "Member2026!"),
+      temporaryPassword: input.temporaryPassword || input.password,
     }));
     return sendJson(res, 200, result);
   }
@@ -450,6 +462,27 @@ async function saveMember(req, res) {
     createdAt: now(),
   };
   db.members.push(member);
+  queueEmail(
+    db,
+    member.email,
+    "Your Z-SACCO member login details",
+    [
+      "Welcome to Z-SACCO",
+      "",
+      "Your member portal has been created.",
+      `Member Number: ${member.memberNumber}`,
+      `Login Identity: ${member.memberNumber}`,
+      `Temporary Password: ${input.temporaryPassword || input.password}`,
+      "",
+      "Please sign in and change your password after first login.",
+    ].join("\n")
+  );
+  queueEmail(
+    db,
+    member.phone,
+    "Z-SACCO member SMS login details",
+    `Z-SACCO login: Member ${member.memberNumber}, Password ${input.temporaryPassword || input.password}. Change after first login.`
+  );
   writeDb(db);
   return sendJson(res, 200, localAppData(db, session));
 }

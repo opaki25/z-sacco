@@ -79,6 +79,13 @@ let transactionRecords = [];
 let loanRecords = [];
 let staffRecords = [];
 let liveSacco = null;
+let appSummary = {
+  totalMembers: members.length,
+  totalAccounts: accountRecords.length,
+  totalSavings: accountRecords.reduce((sum, account) => sum + Number(account.balance || 0), 0),
+  activeLoans: loanRows.filter((loan) => loan[5] !== "Rejected").length,
+  totalTransactions: transactions.length,
+};
 
 const adminAccounts = [
   { name: "Amina Kato", email: "admin@zsacco.coop", password: "zsacco", memberName: "Amina Kato", memberPassword: "Member2026!" },
@@ -259,10 +266,10 @@ function authScreen(type) {
           <div class="field"><label>Owner / admin full name</label><input name="owner_name" value="Amina Kato" required /></div>
           <div class="field"><label>Owner phone number</label><input name="owner_phone" value="+256 700 000 000" required /></div>
           <div class="field"><label>Owner email address</label><input name="owner_email" type="email" value="owner@zsacco.coop" required /></div>
-          <div class="field"><label>Create password</label><input name="password" type="password" value="Zsacco2026!" required /></div>
-          <div class="field"><label>Confirm password</label><input name="confirm_password" type="password" value="Zsacco2026!" required /></div>
+          <div class="field"><label>Create password</label><input name="password" type="password" value="Zsacco2026!#" required /></div>
+          <div class="field"><label>Confirm password</label><input name="confirm_password" type="password" value="Zsacco2026!#" required /></div>
           <div class="security-note full"><strong>Main account security</strong><span>This creates the SACCO owner/admin account. Members will later set their own limited-access member portal passwords.</span></div>
-          <div class="security-note full"><strong>Password rules</strong><span>Use at least 8 characters with uppercase, lowercase, number, and symbol.</span></div>
+          <div class="security-note full"><strong>Password rules</strong><span>Use at least 12 characters with uppercase, lowercase, number, symbol, and no spaces.</span></div>
           <button class="gold-submit full" type="button" data-create-access>${icons.lock} Create account</button>
           <button class="glass-link" type="button" data-auth-tab="signin">Already have an account?</button>
         </div>
@@ -287,13 +294,13 @@ function memberForm() {
       <div class="field"><label>First name</label><input name="first_name" placeholder="Enter first name" required /></div>
       <div class="field"><label>Last name</label><input name="last_name" placeholder="Enter last name" required /></div>
       <div class="field"><label>National ID</label><input name="national_id" placeholder="Enter national ID / NIN" required /></div>
-      <div class="field"><label>Phone number</label><input name="phone" placeholder="+256 ..." required /></div>
+      <div class="field"><label>Phone number</label><div class="phone-input-group"><select name="country_code" required><option value="+256" selected>UG +256</option><option value="+254">KE +254</option><option value="+255">TZ +255</option><option value="+250">RW +250</option><option value="+211">SS +211</option><option value="+243">DRC +243</option></select><input name="phone_local" placeholder="700 000 000" required /></div></div>
       <div class="field"><label>Email address</label><input name="email" type="email" placeholder="member@example.com" required /></div>
       <div class="field"><label>Branch</label><select name="branch" required><option value="" selected disabled>Select branch</option><option>${liveSacco?.location || "Main Branch"}</option><option>Wandegeya</option><option>Mukono</option></select></div>
       <div class="field"><label>Membership type</label><select name="member_type" required><option value="" selected disabled>Select type</option><option>Individual</option><option>Group</option><option>Corporate</option></select></div>
-      <div class="field"><label>Member portal password</label><input name="password" type="password" placeholder="Create secure password" required /></div>
+      <div class="field"><label>Member portal password</label><div class="password-input-group"><input name="password" type="password" placeholder="Create secure password" required /><button class="ghost-button" type="button" data-generate-member-password>Generate</button></div></div>
       <div class="field full"><label>Address</label><textarea name="address" placeholder="Enter member address" required></textarea></div>
-      <div class="security-note full"><strong>Password rules</strong><span>Use at least 8 characters with uppercase, lowercase, number, and symbol.</span></div>
+      <div class="security-note full"><strong>Password rules</strong><span>Use at least 12 characters with uppercase, lowercase, number, symbol, and no spaces.</span></div>
       <div class="form-actions full"><button class="primary-button" type="button" data-save-member>Save member</button><button class="ghost-button" type="button" data-upload-kyc>Upload KYC</button></div>
     </form>
   </article></div>`;
@@ -427,6 +434,12 @@ function memberDashboard() {
   const loan = loanRecords.find((item) => String(item.status || "").toLowerCase() !== "rejected") || {};
   const outstanding = Number(loan.requestedAmount || 0) * (1 - (Number(loan.progressPercent || 0) / 100));
   return `<div class="screen">
+    <section class="grid stats-grid">
+      ${moneyStat("SACCO Members", Number(appSummary.totalMembers || memberRecords.length).toLocaleString(), liveSacco?.name || "Your SACCO", icons.users)}
+      ${moneyStat("SACCO Savings", formatUGX(appSummary.totalSavings || 0, true), "Total cooperative savings", icons.wallet)}
+      ${moneyStat("Active Loans", Number(appSummary.activeLoans || loanRecords.length).toLocaleString(), "Across the SACCO", icons.loan)}
+      ${moneyStat("Transactions", Number(appSummary.totalTransactions || transactionRecords.length).toLocaleString(), "Recorded activity", icons.receipt)}
+    </section>
     <section class="portal-hero">
       <article class="portal-card balance-card">
         <p class="eyebrow">Available savings</p><div class="amount-xl">${formatUGX(savings)}</div>
@@ -533,6 +546,7 @@ function rowWithRecord(row, record) {
 function syncAppData(data) {
   if (!data) return;
   liveSacco = data.sacco || liveSacco;
+  appSummary = data.summary || appSummary;
   memberRecords = data.members || [];
   accountRecords = data.accounts || accountRecords;
   transactionRecords = data.transactions || [];
@@ -592,6 +606,14 @@ function nextRef(prefix) {
 function nextSaccoRegistration() {
   const year = new Date().getFullYear();
   return `ZS-SACCO-${year}-${Math.floor(100000 + Math.random() * 899999)}`;
+}
+
+function generateSecurePassword(length = 16) {
+  const groups = ["ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnopqrstuvwxyz", "23456789", "!@#$%&*?"];
+  const all = groups.join("");
+  const chars = groups.map((group) => group[Math.floor(Math.random() * group.length)]);
+  while (chars.length < length) chars.push(all[Math.floor(Math.random() * all.length)]);
+  return chars.sort(() => Math.random() - 0.5).join("");
 }
 
 function downloadFile(filename, content, type = "text/plain") {
@@ -678,8 +700,14 @@ async function saveMember(button) {
   const last = String(data.get("last_name") || "").trim();
   const branch = String(data.get("branch") || liveSacco?.location || "Main Branch");
   const password = String(data.get("password") || "");
+  const localPhone = String(data.get("phone_local") || "").replace(/^0+/, "").replace(/\D/g, "");
+  const phone = `${data.get("country_code")}${localPhone}`;
+  if (localPhone.length < 6) {
+    showToast("Please enter a valid member phone number.");
+    return;
+  }
   if (!validatePassword(password)) {
-    showToast("Member password is too weak. Use uppercase, lowercase, number, and symbol.");
+    showToast("Member password is too weak. Use 12+ characters with uppercase, lowercase, number, symbol, and no spaces.");
     return;
   }
   if (authToken) {
@@ -687,16 +715,17 @@ async function saveMember(button) {
       const result = await apiRequest("/api/members", {
         token: authToken,
         name: `${first} ${last}`,
-        phone: data.get("phone"),
+        phone,
         email: data.get("email"),
         branch,
         nationalId: data.get("national_id"),
         memberType: data.get("member_type"),
         address: data.get("address"),
         password,
+        temporaryPassword: password,
       });
       syncAppData(result);
-      showToast(`${first} ${last} saved and linked to a savings account.`);
+      showToast(`${first} ${last} saved. Login details were queued for email and phone.`);
       setAdminScreen("members");
       return;
     } catch (error) {
@@ -985,7 +1014,12 @@ function submitContactForm(button) {
 }
 
 function validatePassword(password) {
-  return password.length >= 8 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
+  return password.length >= 12
+    && !/\s/.test(password)
+    && /[A-Z]/.test(password)
+    && /[a-z]/.test(password)
+    && /\d/.test(password)
+    && /[^A-Za-z0-9]/.test(password);
 }
 
 async function createSaccoAccount(button) {
@@ -999,7 +1033,7 @@ async function createSaccoAccount(button) {
   const password = String(data.get("password") || "");
   const confirmPassword = String(data.get("confirm_password") || "");
   if (!validatePassword(password)) {
-    showToast("Password is too weak. Use uppercase, lowercase, number, and symbol.");
+    showToast("Password is too weak. Use 12+ characters with uppercase, lowercase, number, symbol, and no spaces.");
     return;
   }
   if (password !== confirmPassword) {
@@ -1106,6 +1140,7 @@ document.addEventListener("click", (event) => {
   const loginSubmitButton = event.target.closest("[data-login-submit]");
   const forgotPasswordButton = event.target.closest("[data-forgot-password]");
   const logoutButton = event.target.closest("[data-logout]");
+  const generateMemberPasswordButton = event.target.closest("[data-generate-member-password]");
   if (openAppButton) openSystemAuth(openAppButton.dataset.openApp);
   if (scrollButton) scrollToSection(scrollButton.dataset.scrollTarget);
   if (featureCard) setFeatureDetail(featureCard);
@@ -1113,6 +1148,14 @@ document.addEventListener("click", (event) => {
   if (loginSubmitButton) loginAsRole(loginSubmitButton.dataset.loginSubmit, loginSubmitButton);
   if (forgotPasswordButton) forgotPassword(forgotPasswordButton.dataset.forgotPassword, forgotPasswordButton);
   if (logoutButton) logout();
+  if (generateMemberPasswordButton) {
+    const input = generateMemberPasswordButton.closest(".password-input-group")?.querySelector('[name="password"]');
+    if (input) {
+      input.type = "text";
+      input.value = generateSecurePassword();
+      showToast("Secure member password generated.");
+    }
+  }
   if (screenButton) setAdminScreen(screenButton.dataset.screen);
   if (memberScreenButton) setMemberScreen(memberScreenButton.dataset.memberScreen);
   if (authTabButton) setAuthMode(authTabButton.dataset.authTab, authTabButton);
