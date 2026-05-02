@@ -1761,6 +1761,13 @@ textarea:focus {
   border-color: rgba(255, 120, 120, 0.7);
 }
 
+.form-grid.was-validated input:invalid,
+.form-grid.was-validated select:invalid,
+.form-grid.was-validated textarea:invalid {
+  border-color: rgba(255, 120, 120, 0.75);
+  box-shadow: 0 0 0 3px rgba(255, 120, 120, 0.12);
+}
+
 .site-card h3,
 .process-grid h3 {
   color: #fff;

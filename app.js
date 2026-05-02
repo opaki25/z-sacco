@@ -284,15 +284,16 @@ function memberForm() {
   return `<div class="screen"><article class="card">
     <div class="card-title"><h2>Add / Edit Member</h2><span class="pill">KYC required</span></div>
     <form class="form-grid">
-      <div class="field"><label>First name</label><input name="first_name" value="Amina" /></div>
-      <div class="field"><label>Last name</label><input name="last_name" value="Kato" /></div>
-      <div class="field"><label>National ID</label><input name="national_id" value="CM94077109" /></div>
-      <div class="field"><label>Phone number</label><input name="phone" value="+256 772 402 110" /></div>
-      <div class="field"><label>Email address</label><input name="email" value="member@zsacco.coop" /></div>
-      <div class="field"><label>Branch</label><select name="branch"><option>${liveSacco?.location || "Kampala Central"}</option><option>Wandegeya</option><option>Mukono</option></select></div>
-      <div class="field"><label>Membership type</label><select name="member_type"><option>Individual</option><option>Group</option><option>Corporate</option></select></div>
-      <div class="field"><label>Member portal password</label><input name="password" type="password" value="Member2026!" /></div>
-      <div class="field full"><label>Address</label><textarea name="address">Kira Road, Kampala</textarea></div>
+      <div class="field"><label>First name</label><input name="first_name" placeholder="Enter first name" required /></div>
+      <div class="field"><label>Last name</label><input name="last_name" placeholder="Enter last name" required /></div>
+      <div class="field"><label>National ID</label><input name="national_id" placeholder="Enter national ID / NIN" required /></div>
+      <div class="field"><label>Phone number</label><input name="phone" placeholder="+256 ..." required /></div>
+      <div class="field"><label>Email address</label><input name="email" type="email" placeholder="member@example.com" required /></div>
+      <div class="field"><label>Branch</label><select name="branch" required><option value="" selected disabled>Select branch</option><option>${liveSacco?.location || "Main Branch"}</option><option>Wandegeya</option><option>Mukono</option></select></div>
+      <div class="field"><label>Membership type</label><select name="member_type" required><option value="" selected disabled>Select type</option><option>Individual</option><option>Group</option><option>Corporate</option></select></div>
+      <div class="field"><label>Member portal password</label><input name="password" type="password" placeholder="Create secure password" required /></div>
+      <div class="field full"><label>Address</label><textarea name="address" placeholder="Enter member address" required></textarea></div>
+      <div class="security-note full"><strong>Password rules</strong><span>Use at least 8 characters with uppercase, lowercase, number, and symbol.</span></div>
       <div class="form-actions full"><button class="primary-button" type="button" data-save-member>Save member</button><button class="ghost-button" type="button" data-upload-kyc>Upload KYC</button></div>
     </form>
   </article></div>`;
@@ -667,10 +668,20 @@ async function postTransaction(type, button) {
 
 async function saveMember(button) {
   const form = button.closest("form");
+  form.classList.add("was-validated");
+  if (!form.checkValidity()) {
+    showToast("Please fill in all member details before saving.");
+    return;
+  }
   const data = new FormData(form);
-  const first = String(data.get("first_name") || "New").trim();
-  const last = String(data.get("last_name") || "Member").trim();
+  const first = String(data.get("first_name") || "").trim();
+  const last = String(data.get("last_name") || "").trim();
   const branch = String(data.get("branch") || liveSacco?.location || "Main Branch");
+  const password = String(data.get("password") || "");
+  if (!validatePassword(password)) {
+    showToast("Member password is too weak. Use uppercase, lowercase, number, and symbol.");
+    return;
+  }
   if (authToken) {
     try {
       const result = await apiRequest("/api/members", {
@@ -682,7 +693,7 @@ async function saveMember(button) {
         nationalId: data.get("national_id"),
         memberType: data.get("member_type"),
         address: data.get("address"),
-        password: data.get("password"),
+        password,
       });
       syncAppData(result);
       showToast(`${first} ${last} saved and linked to a savings account.`);
